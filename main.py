@@ -15,8 +15,8 @@ def batter_data():
     batter_df = read_csv_to_dataframe(batter_filename)
 
     # Search feature
-    search_name = st.text_input("Search by batter name:")
-    st.write("Search Results:")
+    search_name = st.text_input("Batter Name:")
+    st.caption("Sorted by projected WAR")
 
     # Apply search to the original DataFrame
     search_result = search_by_name(batter_df, search_name)
@@ -30,8 +30,8 @@ def pitcher_data():
     pitcher_df = read_csv_to_dataframe(pitcher_filename)
 
     # Search feature
-    search_name = st.text_input("Search by pitcher name:")
-    st.write("Search Results:")
+    search_name = st.text_input("Pitcher name:")
+    st.caption("Sorted by projected WAR")
 
     # Apply search to the original DataFrame
     search_result = search_by_name(pitcher_df, search_name)
@@ -45,8 +45,8 @@ def search_by_name(df, name):
         return df[df['Name'].str.contains(name, case=False, na=False)]
     return df
 
-def draft_help():
-    st.write("Hello World! This is the Draft Help page.")
+def stat_scout():
+    st.write("StatScout will recommend players to draft.")
 
     # Initialize session state DataFrames if not already initialized
     if "batter_df" not in st.session_state:
@@ -70,52 +70,53 @@ def draft_help():
         st.warning("Please select at least one player.")
         return
 
-    # Display the selected players with all their stats
-    st.write("Selected Players:")
-    selected_dfs = []
+    # Create an empty DataFrame for totals
+    totals_df = pd.DataFrame(columns=["Name", "Stolen Bases", "Runs", "RBIs", "Home Runs", "OBP"])
 
-    for player in st.session_state.selected_players:
-        player_info = st.session_state.batter_df[st.session_state.batter_df['Name'] == player]
-        if player_info.empty:
-            player_info = st.session_state.pitcher_df[st.session_state.pitcher_df['Name'] == player]
+    # Calculate and add total stats to the totals DataFrame
+    totals_df.loc[0, "Name"] = "Total Stats"
+    totals_df.loc[0, "Stolen Bases"] = sum(
+        st.session_state.batter_df.loc[st.session_state.batter_df['Name'] == player, 'SB'].astype(float).sum()
+        for player in st.session_state.selected_players
+    )
+    totals_df.loc[0, "Runs"] = sum(
+        st.session_state.batter_df.loc[st.session_state.batter_df['Name'] == player, 'R'].astype(float).sum()
+        for player in st.session_state.selected_players
+    )
+    totals_df.loc[0, "RBIs"] = sum(
+        st.session_state.batter_df.loc[st.session_state.batter_df['Name'] == player, 'RBI'].astype(float).sum()
+        for player in st.session_state.selected_players
+    )
+    totals_df.loc[0, "Home Runs"] = sum(
+        st.session_state.batter_df.loc[st.session_state.batter_df['Name'] == player, 'HR'].astype(float).sum()
+        for player in st.session_state.selected_players
+    )
+    # Calculate average OBP and add it to the totals DataFrame
+    average_obp = st.session_state.batter_df.loc[
+        st.session_state.batter_df['Name'].isin(st.session_state.selected_players), 'OBP'].astype(float).mean()
+    totals_df.loc[0, "OBP"] = f"{average_obp:.3f}"
 
-        # Append player info to the list
-        selected_dfs.append(player_info)
+    # Display the totals DataFrame
+    st.write(totals_df.set_index('Name'))
 
-    # Concatenate the list of DataFrames
-    selected_df = pd.concat(selected_dfs, ignore_index=True)
-
-    # Calculate total stats
-    total_stats = {
-        "Stolen Bases": selected_df['SB'].astype(float).sum(),
-        "Runs": selected_df['R'].astype(float).sum(),
-        "RBIs": selected_df['RBI'].astype(float).sum(),
-        "Home Runs": selected_df['HR'].astype(float).sum()
-    }
-
-    # Add a new row for total stats under the DataFrame
-    selected_df = selected_df.append(pd.Series(total_stats, name="Total Stats"))
-
-    # Calculate and display average OBP
-    average_obp = selected_df['OBP'].astype(float).mean()
-    st.write(f"Average OBP: {average_obp:.3f}")
-
-    # Display the combined DataFrame with player on the left and stats on the right
-    st.write(selected_df.set_index('Name'))
-
+def how_to():
+    st.title("Docs")
 
 def main():
-    st.title("Baseball Player Stats")
+    st.title("Fantasy Draft Calculator")
+    st.caption("All projections are by Fangraphs/Steamer from Nov 23")
 
     # Add radio buttons for navigation
-    page = st.sidebar.radio("Navigation", ["Player Data", "Draft Help"])
+    page = st.sidebar.radio("Navigation", ["Steamer Projections", "StatScout", "How to"])
 
     # Search feature for both data sets
-    if page == "Player Data":
+    if page == "Steamer Projections":
         batter_data()
         pitcher_data()
-    elif page == "Draft Help":
-        draft_help()
+    elif page == "StatScout":
+        stat_scout()
+    elif page == "How to":
+        how_to()
 
 if __name__ == "__main__":
     main()
