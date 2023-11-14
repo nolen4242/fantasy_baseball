@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
 import csv
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error
 
 def read_csv_to_dataframe(filename):
     data = []
@@ -12,11 +9,6 @@ def read_csv_to_dataframe(filename):
         for row in csv_reader:
             data.append(row)
     return pd.DataFrame(data)
-
-def search_by_name(df, name):
-    if name:
-        return df[df['Name'].str.contains(name, case=False, na=False)]
-    return df
 
 def batter_data():
     batter_filename = 'batter-data.csv'
@@ -48,6 +40,11 @@ def pitcher_data():
     st.write("Pitcher DataFrame:")
     st.dataframe(search_result, width=1000)  # Adjust the width as needed
 
+def search_by_name(df, name):
+    if name:
+        return df[df['Name'].str.contains(name, case=False, na=False)]
+    return df
+
 def draft_help():
     st.write("Hello World! This is the Draft Help page.")
 
@@ -75,31 +72,37 @@ def draft_help():
 
     # Display the selected players with all their stats
     st.write("Selected Players:")
-    selected_df = pd.DataFrame()
+    selected_dfs = []
+
     for player in st.session_state.selected_players:
         player_info = st.session_state.batter_df[st.session_state.batter_df['Name'] == player]
         if player_info.empty:
             player_info = st.session_state.pitcher_df[st.session_state.pitcher_df['Name'] == player]
 
-        # Combine player info into a single DataFrame
-        selected_df = pd.concat([selected_df, player_info], axis=0)
+        # Append player info to the list
+        selected_dfs.append(player_info)
+
+    # Concatenate the list of DataFrames
+    selected_df = pd.concat(selected_dfs, ignore_index=True)
+
+    # Calculate total stats
+    total_stats = {
+        "Stolen Bases": selected_df['SB'].astype(float).sum(),
+        "Runs": selected_df['R'].astype(float).sum(),
+        "RBIs": selected_df['RBI'].astype(float).sum(),
+        "Home Runs": selected_df['HR'].astype(float).sum()
+    }
+
+    # Add a new row for total stats under the DataFrame
+    selected_df = selected_df.append(pd.Series(total_stats, name="Total Stats"))
+
+    # Calculate and display average OBP
+    average_obp = selected_df['OBP'].astype(float).mean()
+    st.write(f"Average OBP: {average_obp:.3f}")
 
     # Display the combined DataFrame with player on the left and stats on the right
     st.write(selected_df.set_index('Name'))
 
-    # Perform linear regression (example)
-    st.write("Performing Linear Regression (Example):")
-    X = selected_df[['PA', 'HR', 'R', 'RBI', 'SB']]
-    y = selected_df['WAR']
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-
-    mse = mean_squared_error(y_test, y_pred)
-    st.write(f"Mean Squared Error: {mse}")
 
 def main():
     st.title("Baseball Player Stats")
@@ -116,4 +119,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
