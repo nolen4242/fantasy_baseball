@@ -72,44 +72,6 @@ def calculate_totals(totals_df, source_batter_df, source_pitcher_df, selected_ba
         selected_pitchers)
 
 
-# Function to get AI recommendations
-def get_recommendations(df, selected_players, selected_pitchers, position_col='Position'):
-    model = RandomForestClassifier()  # You can use a more advanced model
-    features = ['Stolen Bases', 'Runs', 'RBIs', 'Home Runs', 'OBP', 'Wins', 'ERA', 'Saves']
-
-    # Check if the 'Position' column is present in the DataFrame
-    if position_col in df.columns:
-        # Assuming 'Position' column indicates the player type (Hitter/Pitcher)
-        df['Position'] = df.apply(lambda row: 'Hitter' if row[position_col] in ['OF', '1B', '2B', '3B', 'SS'] else 'Pitcher', axis=1)
-
-        # Split data into features (X) and labels (y)
-        X = df[features]
-        y = df['Position']
-
-        # Train the model
-        model.fit(X, y)
-
-        # Predict probabilities for all players
-        df['RecommendationProbability'] = model.predict_proba(X)[:, 1]
-
-        # Filter out drafted players
-        undrafted_players = df[df['Name'].isin(set(df['Name']) - set(selected_players) - set(selected_pitchers))]
-
-        # Return top 5 recommendations for hitters and pitchers
-        top_hitters = undrafted_players[undrafted_players['Position'] == 'Hitter'].nlargest(5, 'RecommendationProbability')
-        top_pitchers = undrafted_players[undrafted_players['Position'] == 'Pitcher'].nlargest(5, 'RecommendationProbability')
-
-        return top_hitters, top_pitchers
-
-    else:
-        # Handle the case when 'Position' column is not present
-        st.warning("The 'Position' column is not present in the DataFrame.")
-        return pd.DataFrame(), pd.DataFrame()
-
-
-    return top_hitters, top_pitchers
-
-
 def display_recommendations(top_hitters, top_pitchers):
     st.write("Top 5 Recommended Hitters:")
     if not top_hitters.empty:
@@ -125,6 +87,19 @@ def display_recommendations(top_hitters, top_pitchers):
 
 
 
+def get_recommendations(batter_df, pitcher_df, selected_players, selected_pitchers):
+    # Filter available players based on selected players
+    available_batters = batter_df[~batter_df['Name'].isin(selected_players)]
+    available_pitchers = pitcher_df[~pitcher_df['Name'].isin(selected_pitchers)]
+
+    # Consider team needs and player availability for recommendations
+    # For simplicity, let's assume you want to prioritize players with higher projected WAR
+    top_batters = available_batters.sort_values(by='WAR', ascending=False).head(5)
+    top_pitchers = available_pitchers.sort_values(by='WAR', ascending=False).head(5)
+
+    return top_batters, top_pitchers
+
+# Updated stat_scout function
 def stat_scout():
     st.write("StatScout will recommend players to draft.")
 
@@ -146,13 +121,21 @@ def stat_scout():
         st.session_state.selected_pitchers_team2 = []
 
     # Display the search results with checkboxes for selection for Team 1 (Batters and Pitchers)
-    available_players_team1 = st.session_state.batter_df['Name'].tolist() + st.session_state.pitcher_df['Name'].tolist()
-    available_players_team1 = list(set(available_players_team1) - set(st.session_state.selected_players_team2) - set(
-        st.session_state.selected_pitchers_team2))
-    selected_players_team1 = st.multiselect("Team 1: Select Players", available_players_team1,
-                                            default=list(st.session_state.selected_players_team1) + list(st.session_state.selected_pitchers_team1))
-    selected_pitchers_team1 = st.multiselect("Team 1: Select Pitchers", available_players_team1,
-                                             default=list(st.session_state.selected_pitchers_team1))
+    available_players_team1 = (
+        st.session_state.batter_df['Name'].tolist() + st.session_state.pitcher_df['Name'].tolist()
+    )
+    available_players_team1 = list(
+        set(available_players_team1) - set(st.session_state.selected_players_team2) - set(
+            st.session_state.selected_pitchers_team2)
+    )
+    selected_players_team1 = st.multiselect(
+        "Team 1: Select Players", available_players_team1,
+        default=st.session_state.selected_players_team1 + st.session_state.selected_pitchers_team1
+    )
+    selected_pitchers_team1 = st.multiselect(
+        "Team 1: Select Pitchers", available_players_team1,
+        default=st.session_state.selected_pitchers_team1
+    )
 
     # Update the selected players and pitchers for Team 1 in the session state
     st.session_state.selected_players_team1 = [player for player in selected_players_team1 if
@@ -164,9 +147,23 @@ def stat_scout():
     if not selected_players_team1 or not selected_pitchers_team1:
         st.warning("Team 1: Please select at least one player.")
     else:
+        # Get player recommendations based on current team and availability
+        top_hitters, top_pitchers = get_recommendations(
+            st.session_state.batter_df, st.session_state.pitcher_df,
+            st.session_state.selected_players_team1, st.session_state.selected_pitchers_team1
+        )
+
+        # Display the recommended players
+        st.write("Top 5 Recommended Hitters:")
+        st.write(top_hitters[['Name', 'WAR']])
+
+        st.write("Top 5 Recommended Pitchers:")
+        st.write(top_pitchers[['Name', 'WAR']])
+
         # Create an empty DataFrame for Team 1 totals
         totals_df_team1 = pd.DataFrame(
-            columns=["Name", "Stolen Bases", "Runs", "RBIs", "Home Runs", "OBP", "Wins", "ERA", "Saves"])
+            columns=["Name", "Stolen Bases", "Runs", "RBIs", "Home Runs", "OBP", "Wins", "ERA", "Saves"]
+        )
 
         # Calculate and add total stats to the totals DataFrame for Team 1
         calculate_totals(totals_df_team1, st.session_state.batter_df, st.session_state.pitcher_df,
@@ -180,13 +177,21 @@ def stat_scout():
     st.divider()
 
     # Display the search results with checkboxes for selection for Team 2 (Batters and Pitchers)
-    available_players_team2 = st.session_state.batter_df['Name'].tolist() + st.session_state.pitcher_df['Name'].tolist()
-    available_players_team2 = list(set(available_players_team2) - set(st.session_state.selected_players_team1) - set(
-        st.session_state.selected_pitchers_team1))
-    selected_players_team2 = st.multiselect("Team 2: Select Players", available_players_team2,
-                                            default=list(st.session_state.selected_players_team2) + list(st.session_state.selected_pitchers_team2))
-    selected_pitchers_team2 = st.multiselect("Team 2: Select Pitchers", available_players_team2,
-                                             default=list(st.session_state.selected_pitchers_team2))
+    available_players_team2 = (
+        st.session_state.batter_df['Name'].tolist() + st.session_state.pitcher_df['Name'].tolist()
+    )
+    available_players_team2 = list(
+        set(available_players_team2) - set(st.session_state.selected_players_team1) - set(
+            st.session_state.selected_pitchers_team1)
+    )
+    selected_players_team2 = st.multiselect(
+        "Team 2: Select Players", available_players_team2,
+        default=st.session_state.selected_players_team2 + st.session_state.selected_pitchers_team2
+    )
+    selected_pitchers_team2 = st.multiselect(
+        "Team 2: Select Pitchers", available_players_team2,
+        default=st.session_state.selected_pitchers_team2
+    )
 
     # Update the selected players and pitchers for Team 2 in the session state
     st.session_state.selected_players_team2 = [player for player in selected_players_team2 if
@@ -198,17 +203,27 @@ def stat_scout():
     if not selected_players_team2 or not selected_pitchers_team2:
         st.warning("Team 2: Please select at least one player.")
     else:
+        # Get player recommendations based on current team and availability
+        top_hitters, top_pitchers = get_recommendations(
+            st.session_state.batter_df, st.session_state.pitcher_df,
+            st.session_state.selected_players_team2, st.session_state.selected_pitchers_team2
+        )
+
+        # Display the recommended players
+        st.write("Top 5 Recommended Hitters:")
+        st.write(top_hitters[['Name', 'WAR']])
+
+        st.write("Top 5 Recommended Pitchers:")
+        st.write(top_pitchers[['Name', 'WAR']])
+
         # Create an empty DataFrame for Team 2 totals
         totals_df_team2 = pd.DataFrame(
-            columns=["Name", "Stolen Bases", "Runs", "RBIs", "Home Runs", "OBP", "Wins", "ERA", "Saves"])
+            columns=["Name", "Stolen Bases", "Runs", "RBIs", "Home Runs", "OBP", "Wins", "ERA", "Saves"]
+        )
 
         # Calculate and add total stats to the totals DataFrame for Team 2
         calculate_totals(totals_df_team2, st.session_state.batter_df, st.session_state.pitcher_df,
                          st.session_state.selected_players_team2, st.session_state.selected_pitchers_team2)
-
-        # Display the totals DataFrame for Team 2
-        st.write("Team 2 Selected Players and Pitchers:")
-        st.write(totals_df_team2.set_index('Name'))
 
 
 
